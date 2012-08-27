@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#coding=utf-8
 #
 # Author: maplebeats
 #
@@ -11,13 +12,18 @@
 # Description: SB机器人
 #
 
-from urllib import request,parse
-from http import cookiejar
 import json
-
+import urllib as parse
+import urllib2 as request
+import cookielib as cookiejar
 import re
 
 #import sqlite3
+def _(string):
+    try:
+        return string.encode("u8")
+    except:
+        return string
 
 class Bot:
 
@@ -27,23 +33,29 @@ class Bot:
             rr = request.Request(url,data,self._headers)
         else:
             rr = request.Request(url=url, headers=self._headers)
-        with opener.open(rr) as fp:
-            try:
-                res = fp.read().decode('utf-8')
-            except:
-                res = fp.read()
+        fp = opener.open(rr)
+        try:
+            res = fp.read().decode('utf-8')
+        except:
+            res = fp.read()
+        fp.close()
         return res
 
     def __init__(self):
         self.simi_init()
-        self.link = re.compile(r'[http://|\w*\.]?.*\.\w{2,4}[^\w]+')
+        self.link = re.compile(r'([http://|\w*\.]?\w*\.\w{2,4})[^\w]+')
+        self.time = re.compile(r'时间|星期')
 
     def reply(self,req):
-        l = self.link.search(req)
+        l = self.time.search(req)
         if l:
-            return l.group(0)
+            return self.gettime()
         else:
             return self.simi_bot(req) or self.hito_bot()
+
+    def gettime(self):
+        import datetime
+        return datetime.datetime.today().strftime('%Y年%m月%d日%H:%M:%S')
 
     @staticmethod
     def gettitle(link):
@@ -62,15 +74,16 @@ class Bot:
         self._request(url=urlv,opener=self.simi_opener)
 
     def simi_bot(self,req):
-        urlv = "http://www.simsimi.com/func/req?%s" % parse.urlencode({"msg": req, "lc": "zh"})
+        pu = parse.urlencode({"msg": req, "lc": "zh"})
+        urlv = "http://www.simsimi.com/func/req?%s" % pu
         res = self._request(urlv,opener=self.simi_opener)
         if res =="{}":
             return False
         else:
-            return json.loads(res)['response']
+            return _(json.loads(res)['response'])
 
     def hito_bot(self):
         urlv = "http://api.hitokoto.us/rand"
         res = request.urlopen(urlv).read().decode()
         hit = json.loads(res)
-        return hit['hitokoto']
+        return _(hit['hitokoto'])

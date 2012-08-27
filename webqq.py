@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2
+#coding=utf-8 
 #
 # Author: maplebeats
 #
@@ -9,20 +10,30 @@
 # Filename:		webqq.py
 #
 # Description: Webqq class
-#
-from urllib import parse,request
-from http import cookiejar
+# ##=py3
+import urllib as parse
+import urllib2 as request
+import cookielib as cookiejar
+##from urllib import parse,request
+##from http import cookiejar
 import random
 import json,hashlib
 import threading
-#from io import StringIO
+
 import gzip
+from StringIO import StringIO
 
 import logging
 
 from bot import Bot
 
 from config import *
+
+def _(string):
+    try:
+        return string.encode("u8")
+    except: 
+        return string
 
 class Webqq:
 
@@ -35,16 +46,12 @@ class Webqq:
     def _preprocess(self,password=None,verifycode=None):
         self.hashpasswd=self._md5(password)
         I=self._hexchar2bin(self.hashpasswd)
-        H = self._md5(I + bytes(verifycode[2],encoding="ISO-8859-1"))
+        H = self._md5(I + verifycode[2])
+        ##H = self._md5(I + bytes(verifycode[2],encoding="ISO-8859-1"))
         G = self._md5(H + verifycode[1].upper());
         return G
 
-    def _md5(self,string):
-        try:
-            string = string.encode('utf-8')
-        except:
-            pass
-        return hashlib.md5(string).hexdigest().upper()
+    def _md5(self,string): return hashlib.md5(string).hexdigest().upper()
     
     def _request(self, url, data=None):
         if data:
@@ -52,15 +59,17 @@ class Webqq:
             rr = request.Request(url,data,self._headers)
         else:
             rr = request.Request(url=url, headers=self._headers)
-        with self.opener.open(rr) as fp:
-            if fp.info().get('Content-Encoding') == 'gzip':
-                f = gzip.decompress(fp.read())
-                res = f.decode('utf-8')
-            else:
-                try:
-                    res = fp.read().decode('utf-8')
-                except:
-                    res = fp.read()
+        fp =  self.opener.open(rr)
+        if fp.info().get('Content-Encoding') == 'gzip':
+            buf = StringIO(fp.read())
+            f = gzip.GzipFile(fileobj=buf)
+            res = f.read().encode('utf-8')
+            ##f = gzip.decompress(fp.read())
+            ##res = f.decode('utf-8')
+        else:
+            ##res = fp.read().decode('utf-8')
+            res = fp.read()
+        fp.close()
         #logger.debug(res)
         return res
 
@@ -166,23 +175,33 @@ class Webqq:
                 data = i['value']
                 if poll_type == 'message':
                     from_uin = data['from_uin']
-                    content = str(data['content'][1]).replace('\r',',')
+                    content = data['content'][1]
+
+                    logger.info('[%s]:%s' % (self._get_name(from_uin),content))
+                    if(type(content)==list):
+                        content = str(content)
+                    else:
+                        content = _(content)
                     tt = threading.Thread(target=self.send_user_msg,args=(from_uin,self._botmsg(content),))
                     tt.start()
-                    logger.info('[%s]:%s' % (self._get_name(from_uin),content))
                 elif poll_type == 'group_message':
                     from_uin = data['from_uin']
                     groupname = self._get_name(from_uin)
-                    content = str(data['content'][1]).replace('\r',',')
                     send_uin = data['send_uin']
                     username = self._get_name(send_uin)
+                    content = data['content'][1]
+
+                    logger.info('[%s][%s]:%s' % (groupname,username,content))
+                    if(type(content)==list):
+                        content = str(content)
+                    else:
+                        content = _(content)
                     tt = threading.Thread(target=self.send_group_msg,args=(from_uin,self._botmsg(content),))
                     tt.start()
-                    logger.info('[%s][%s]:%s' % (groupname,username,content))
                 else:
                     pass
 
-    def _botmsg(self,msg): return str(self.bot.reply(msg))
+    def _botmsg(self,msg): return self.bot.reply(msg)
 
     def _get_name(self,uin):
         '''<group> only,do not it use in <message>'''
@@ -244,9 +263,9 @@ class Webqq:
         res = self._request(urlv,data)
         data = json.loads(res)
         if data['retcode'] == 0:
-            logger.info("Reply[%s]-->%s" % (self._get_name(uin),msg))
+            logger.info("Reply[%s]-->%s" % (_(self._get_name(uin)),msg))
         else:
-            logger.error("Replay send fail")
+            logger.error("Replay send fail %s" % msg)
 
     def send_group_msg(self,uin=None,msg="test"):
         urlv = "http://d.web2.qq.com/channel/send_qun_msg2"
@@ -259,9 +278,9 @@ class Webqq:
         res = self._request(urlv,data)
         data = json.loads(res)
         if data['retcode'] == 0:
-            logger.info("Reply[%s]-->%s" % (self._get_name(uin),msg))
+            logger.info("Reply[%s]-->%s" % (_(self._get_name(uin)),msg))
         else:
-            logger.error("Replay send fail")
+            logger.error("Replay send fail %s " % msg )
 
 if __name__ == "__main__":
     logger = logging.getLogger()
