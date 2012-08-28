@@ -63,7 +63,7 @@ class Webqq:
         if fp.info().get('Content-Encoding') == 'gzip':
             buf = StringIO(fp.read())
             f = gzip.GzipFile(fileobj=buf)
-            res = f.read().encode('utf-8')
+            res = f.read()
             ##f = gzip.decompress(fp.read())
             ##res = f.decode('utf-8')
         else:
