@@ -2,8 +2,10 @@
 
 qq_config = {
   'user':'xxx',
-  'passwd':'xxxx',
+  'passwd':'xxx',
   'botenable': True
 }
+
+CLIENT_ID = 'xxx'
 
 logfile = 'qq.log'

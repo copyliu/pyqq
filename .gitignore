@@ -7,3 +7,4 @@ config.py
 test.py
 *.e4p
 *.pyc
+verify
