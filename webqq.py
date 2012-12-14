@@ -19,10 +19,17 @@ import json, hashlib
 import threading
 import gzip
 from StringIO import StringIO
+import datetime
 
 from bot import Bot
 
 from config import *
+
+try:
+    import lupa
+    LUA_ENABLED=True
+except:
+    LUA_ENABLED=False
 
 def _(string):
     try:
@@ -82,7 +89,19 @@ class Webqq:
 
         self.bot = Bot()
 
+
     def msg_id(self): self._msgid += 1; return self._msgid
+
+
+    def _get_gface_sig(self):
+        urlv="http://d.web2.qq.com/channel/get_gface_sig2?clientid=%s&psessionid=%s&t=%s" % (self.clientid, self._login_info['psessionid'],random.randrange(1345457600000, 1345458000000))
+        res = self._request(url=urlv)
+        data=json.loads(res)
+        if data['retcode'] == 0:
+            self._gface_sig = data["result"]
+            logger.debug('fetch gface_sig success')
+        else:
+            logger.error('fetch gface_sig fail')
 
     def _getverifycode(self):
         urlv = 'http://check.ptlogin2.qq.com/check?uin=%s&appid=567008010&r=%s' % (self.__qq, random.Random().random())
@@ -149,7 +168,10 @@ class Webqq:
         res = self._request(urlv, data)
         data = json.loads(res)
         self._login_info = data['result']
+        self.bot.qqlogin=self._login_info
         self._get_info()
+        self._get_gface_sig()
+        self.change_status("callme")
         self._poll()
 
     def message_received(self, msg):
@@ -165,7 +187,7 @@ class Webqq:
                         content = str(content)
                     else:
                         content = _(content)
-                    tt = threading.Thread(target=self.send_user_msg, args=(from_uin, self._botmsg(content),))
+                    tt = threading.Thread(target=self.send_user_msg, args=(from_uin, self._botmsg(content,datetime.datetime.now,self._get_name(from_uin),from_uin),))
                     tt.start()
                 elif poll_type == 'group_message':
                     from_uin = data['from_uin']
@@ -179,12 +201,12 @@ class Webqq:
                         content = str(content)
                     else:
                         content = _(content)
-                    tt = threading.Thread(target=self.send_group_msg, args=(from_uin, self._botmsg(content),))
+                    tt = threading.Thread(target=self.send_group_msg, args=(from_uin, self._botmsg(content,datetime.datetime.now(),username,send_uin,groupname,from_uin),))
                     tt.start()
                 else:
                     pass
 
-    def _botmsg(self, msg): return self.bot.reply(msg)
+    def _botmsg(self, msg,msg_time=datetime.datetime.now(),buddy_name=None,buddy_num=None,qun_name=None,qun_num=None): return self.bot.reply(msg,msg_time,buddy_name,buddy_num,qun_name,qun_num)
 
     def _get_name(self, uin):
         '''<group> only,do not it use in <message>'''
@@ -198,6 +220,7 @@ class Webqq:
     def _get_info(self):
         self._group_info = {}
         self._user_info = {}
+        self._group_code={}
         urlv = "http://s.web2.qq.com/api/get_user_friends2"
         status = {'h': 'hello', 'vfwebqq': self._login_info['vfwebqq']}
         data = {'r': json.dumps(status)}
@@ -225,6 +248,7 @@ class Webqq:
             data = res['result']['gnamelist']
             for i in data:
                 self._group_info.update({i['gid']: i['name']})
+                self._group_code.update({i['gid']: i['code']})
                 urlv = "http://s.web2.qq.com/api/get_group_info_ext2?gcode=%s&vfwebqq=%s&t=%s" % (
                 i['code'], self._login_info['vfwebqq'], random.randrange(1345457600000, 1345458000000))
                 res = self._request(urlv)
@@ -236,8 +260,46 @@ class Webqq:
                     logger.warn("the <%s> have no cards" % i['name'])
                 logger.debug("fetch <%s>'s users info sucess" % i['name'])
 
-    def send_user_msg(self, uin, msg="test"):
-        rmsg = "[\"" + msg + "\",[\"font\",{\"name\":\"宋体\",\"size\":\"13\",\"style\":[0,0,0],\"color\":\"000000\"}]]"
+
+    def change_status(self, newstatus):
+        """1. hidden 2. online 3. away 0. callme
+        4. busy 5. offline """
+
+        urlv = "http://d.web2.qq.com/channel/change_status2?newstatus=%s&clientid=%s&psessionid=%s&t=%s" %(
+            newstatus,self.clientid,self._login_info['psessionid'],random.randrange(1345457600000, 1345458000000)
+        )
+        res = self._request(urlv)
+        data = json.loads(res)
+        return data["retcode"]
+
+    def send_user_msg(self, uin, msglist=None):
+
+        fontsettings={}
+        fontsettings["name"]="SIMSUN"
+        fontsettings["size"]="9"
+        fontsettings["style"]=[0,0,0]
+        fontsettings["color"]="000000"
+        fonts=["font",fontsettings]
+
+        if not msglist[0]:
+            return
+        if msglist[1]:
+            #self._get_gface_sig()
+            face=["cface","group",msglist[1]]
+
+        else:
+            face=None
+
+        face = None #TODO: webqq 私聊不支持自定義圖片 吧.
+        urlv = "http://d.web2.qq.com/channel/send_qun_msg2"
+
+        rmsg = []
+        if face:
+            rmsg.append(face)
+        rmsg.append(msglist[0])
+        rmsg.append(fonts)
+        rmsg=json.dumps(rmsg)
+        #rmsg = '['+face+ '"' + msglist[0] + '",["font",{"name":"SIMSUN","size":"9","style":[0,0,0],"color":"000000"}]]'
         urlv = "http://d.web2.qq.com/channel/send_buddy_msg2"
         status = {'to': uin, 'face': 180, 'content': rmsg, 'msg_id': self.msg_id(), 'clientid': self.clientid,
                   "psessionid": self._login_info['psessionid']}
@@ -248,25 +310,56 @@ class Webqq:
         res = self._request(urlv, data)
         data = json.loads(res)
         if data['retcode'] == 0:
-            logger.info("Reply[%s]-->%s" % (_(self._get_name(uin)), msg))
+            logger.info("Reply[%s]-->%s" % (_(self._get_name(uin)), msglist[0]))
         else:
-            logger.error("Replay send fail %s" % msg)
+            logger.error("Replay send fail %s" % msglist[0])
 
-    def send_group_msg(self, uin=None, msg="test"):
+    def send_group_msg(self, uin=None, msglist=None):
+        fontsettings={}
+        fontsettings["name"]="SIMSUN"
+        fontsettings["size"]="9"
+        fontsettings["style"]=[0,0,0]
+        fontsettings["color"]="000000"
+        fonts=["font",fontsettings]
+
+        if not msglist[0]:
+            return
+        if msglist[1]:
+            #self._get_gface_sig()
+            face=["cface","group",msglist[1]]
+
+        else:
+            face=None
         urlv = "http://d.web2.qq.com/channel/send_qun_msg2"
-        rmsg = "[\"" + msg + "\",[\"font\",{\"name\":\"宋体\",\"size\":\"13\",\"style\":[0,0,0],\"color\":\"000000\"}]]"
-        status = {"group_uin": uin, "content": rmsg, "msg_id": self.msg_id(), "clientid": self.clientid,
+
+        rmsg = []
+        if face:
+            rmsg.append(face)
+        rmsg.append(msglist[0])
+        rmsg.append(fonts)
+        rmsg=json.dumps(rmsg)
+        #print rmsg
+        status = {"group_uin": uin, "content": rmsg,  "clientid": self.clientid,
                   "psessionid": self._login_info['psessionid']}
+        if face:
+            status["key"]=self._gface_sig["gface_key"]
+            status["sig"]=self._gface_sig["gface_sig"]
+            status["group_code"]=self._group_code[uin]
+
+        else:
+            status["msg_id"]= self.msg_id()
+
         data = {'r': json.dumps(status),
                 'clientid': self.clientid,
                 'psessionid': self._login_info['psessionid']
         }
+        print data["r"]
         res = self._request(urlv, data)
         data = json.loads(res)
         if data['retcode'] == 0:
-            logger.info("Reply[%s]-->%s" % (_(self._get_name(uin)), msg))
+            logger.info("Reply[%s]-->%s" % (_(self._get_name(uin)), msglist[0]))
         else:
-            logger.error("Replay send fail %s " % msg)
+            logger.error("Replay send fail %s " % msglist[0])
 
 if __name__ == "__main__":
     logger = logging.getLogger()
